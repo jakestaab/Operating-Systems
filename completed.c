@@ -62,12 +62,12 @@ int process_stream(WordCountEntry entries[], int entry_count)
   return line_count;
 }
 
-
+//prints the results of the program either to the screen or to user named file
 void print_result(WordCountEntry entries[], int entry_count, FILE *output)
 {
-  printf("Result:\n");
+  fprintf(output, "Result:\n");
   for(int i = 0; i < entry_count; i++) { // Modified this line
-    printf("%s:%d\n", entries[i].word, entries[i].counter); // Modified this line
+    fprintf(output, "%s:%d\n", entries[i].word, entries[i].counter); // Modified this line
   }
   if(output != stdout)
 	  fclose(output);
@@ -103,23 +103,31 @@ int main(int argc, char **argv)
   
   while(*argv != NULL)
   {
-	if((*argv)[0] == '-')
-	{
+	  
+	if (**argv == '-') {
+		// "-fFILENAME" prints results to file FILENAME
 		if((*argv)[1] == 'f')
 		{
 			prog_name = *argv+2;
-			if(output = fopen(prog_name, "w") == NULL)
+			if((output = fopen(prog_name, "w")) == NULL)
 			{
 				fprintf(stderr, "cannot open file to write");
 				free(entries);
 				return EXIT_FAILURE;
 			}
-		} else
-		{
-			fprintf(stderr, "No such option.");
-			return EXIT_FAILURE;
-		}
-	} else
+		} else if (**argv == '-') { //Prints help message
+			    switch ((*argv)[1]) {
+				case 'h':
+				  printHelp(prog_name);
+				  return EXIT_FAILURE;
+				  break;
+				default:
+				  printf("%s: Invalid option %s. Use -h for help.\n",
+						 prog_name, *argv);
+					return EXIT_FAILURE;
+				}
+      }
+    } else
 	{
 		entries[entryCount].word = *argv;
 		entries[entryCount].counter = 0;
@@ -129,41 +137,10 @@ int main(int argc, char **argv)
   }
   
   fprintf(stdout, "Enter sentences. Enter . in a new line to stop\n");
-  
-  
-/*
-  while (*argv != NULL) {
-    if (**argv == '-') {
-
-      switch ((*argv)[1]) {
-        case 'h':
-          printHelp(prog_name);
-        default:
-          printf("%s: Invalid option %s. Use -h for help.\n",
-                 prog_name, *argv);
-      }
-    } else {
-      if (entryCount < LENGTH(entries)) {
-        entries[entryCount].word = *argv;
-        entries[entryCount++].counter = 0;
-      }
-    }
-    argv++;
-  }
-  if (entryCount == 0) {
-    printf("%s: Please supply at least one word. Use -h for help.\n",
-           prog_name);
-    return EXIT_FAILURE;
-  }
-  if (entryCount == 1) {
-    printf("Looking for a single word\n");
-  } else {
-    printf("Looking for %d words\n", entryCount);
-  }
-  */
-  
 
   process_stream(entries, entryCount);
+  if(output != stdout)
+	  fprintf(stderr, "The result is saved to file %s\n", prog_name);
   print_result(entries, entryCount, output);
 
   return EXIT_SUCCESS;
