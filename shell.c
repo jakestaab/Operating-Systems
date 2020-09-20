@@ -21,7 +21,7 @@ enum { STATE_SPACE, STATE_NON_SPACE };	/* Parser states */
 
 int imthechild(const char *path_to_exec, char *const args[])
 {
-	return execv(path_to_exec, args) ? -1 : 0;
+	return execvp(path_to_exec, args) ? -1 : 0;
 }
 
 void imtheparent(pid_t child_pid, int run_in_background)
@@ -60,6 +60,11 @@ int main(int argc, char **argv)
 	char buffer[SHELL_BUFFER_SIZE];
 	/* exec_argv: Arguments passed to exec call including NULL terminator. */
 	char *exec_argv[SHELL_MAX_ARGS + 1];
+	
+	// counter used to count the commands
+	int counter = 1;
+	// array of strings used to hold commands to be reused
+	char history_buffer[9][SHELL_BUFFER_SIZE];
 
 	/* Entrypoint for the testrunner program */
 	if (argc > 1 && !strcmp(argv[1], "-test")) {
@@ -69,11 +74,6 @@ int main(int argc, char **argv)
 	/* Allow the Shell prompt to display the pid of this process */
 	shell_pid = getpid();
 	
-	// counter used to count the commands
-	int counter = 1;
-	// array of strings used to hold commands to be reused
-	char commands[10][SHELL_BUFFER_SIZE];
-	int commands_counter = 0;
 
 	while (1) {
 	/* The Shell runs in an infinite loop, processing input. */
@@ -86,7 +86,26 @@ int main(int argc, char **argv)
 		n_read = strlen(buffer);
 		run_in_background = n_read > 2 && buffer[n_read - 2] == '&';
 		buffer[n_read - run_in_background - 1] = '\n';
-		
+
+
+		//One of the problems
+		if(buffer[0] == '!') {
+			int prev_cmd = buffer[1] - '0';
+			if((1 <= prev_cmd) && (prev_cmd <= 9) && (prev_cmd < counter)) {
+				strncpy(buffer, history_buffer[prev_cmd - 1], SHELL_BUFFER_SIZE);
+			}
+			else {
+				fprintf(stderr, "Not valid\n");
+				continue;
+			}
+		}
+	
+		if(buffer[0] != '\n') {
+			// add command to array of commands
+			if(counter <= 9)
+				strncpy(history_buffer[counter-1], buffer, SHELL_BUFFER_SIZE);
+			counter++;
+		}			
 		
 
 		/* Parse the arguments: the first argument is the file or command *
@@ -112,15 +131,12 @@ int main(int argc, char **argv)
 
 		buffer[i] = '\0';	/* Terminate input, overwriting the '&' if it exists */
 
+
 		/* If no command was given (empty line) the Shell just prints the prompt again */
 		if (!exec_argc)
 			continue;
-		else {
-			counter++;
-			// add command to array of commands
-			strcpy(commands[commands_counter], buffer);
-			commands_counter++;
-		}
+		
+
 		/* Terminate the list of exec parameters with NULL */
 		exec_argv[exec_argc] = NULL;
 
