@@ -65,6 +65,8 @@ int main(int argc, char **argv)
 	int counter = 1;
 	// array of strings used to hold commands to be reused
 	char history_buffer[9][SHELL_BUFFER_SIZE];
+	// variable for P6
+	int sub_shell_depth = 0;
 
 	/* Entrypoint for the testrunner program */
 	if (argc > 1 && !strcmp(argv[1], "-test")) {
@@ -165,7 +167,18 @@ int main(int argc, char **argv)
 				continue;
 			}
 			if (pid_from_fork == 0) {
-				return imthechild(exec_argv[0], &exec_argv[0]);
+				// P5
+				if(!strcmp(exec_argv[0], "sub")) {
+					counter = 1;
+					shell_pid = getpid();
+					sub_shell_depth++;
+					if (sub_shell_depth >= 3) {
+						fprintf(stderr, "Too deep!\n");
+						return 0;
+					}
+				} else {
+					return imthechild(exec_argv[0], &exec_argv[0]);
+				}
 				/* Exit from main. */
 			} else {
 				imtheparent(pid_from_fork, run_in_background);
