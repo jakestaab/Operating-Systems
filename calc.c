@@ -13,6 +13,13 @@ pthread_t sentinelThread;
 char buffer[BUF_SIZE];
 int num_ops;
 
+struct progress_t {
+	int add;
+	int mult;
+	int group;
+} progress;
+
+static sem_t progress_lock;
 
 /* Utiltity functions provided for your convenience */
 
@@ -64,6 +71,7 @@ void *adder(void *arg)
     int startOffset, remainderOffset;
     int i;
 	int result;
+	int changed;
 	char nString[50];
 
     while (1) {
@@ -76,6 +84,7 @@ void *adder(void *arg)
 
 	/* storing this prevents having to recalculate it in the loop */
 	bufferlen = strlen(buffer);
+	changed = 0;
 
 	for (i = 0; i < bufferlen; i++) {
 		if(buffer[i] == ';') break;
@@ -105,6 +114,8 @@ void *adder(void *arg)
 			
 			bufferlen = strlen(buffer);
 			i = startOffset+strlen(nString)-1;
+			
+			changed = 1;
 			num_ops++;
 		}
 	    // do we have value1 already?  If not, is this a "naked" number?
@@ -115,6 +126,10 @@ void *adder(void *arg)
 	    // expression in buffer, replace it with v1+v2
 	}
 	pthread_mutex_unlock(&buffer_lock);
+	sem_wait(&progress_lock);
+	progress.add = changed? 2 : 1;
+	sem_post(&progress_lock);
+	
 	sched_yield();
 	// something missing?
     }
@@ -126,26 +141,71 @@ void *adder(void *arg)
    "1+(30)+8"). */
 void *multiplier(void *arg)
 {
-    int bufferlen;
+   int bufferlen;
     int value1, value2;
     int startOffset, remainderOffset;
     int i;
+	int changed;
+	int result;
+	char nString[50];
 
     while (1) {
-	startOffset = remainderOffset = -1;
-	value1 = value2 = -1;
+	pthread_mutex_lock(&buffer_lock);
 
 	if (timeToFinish()) {
+		pthread_mutex_unlock(&buffer_lock);
 	    return NULL;
 	}
 
 	/* storing this prevents having to recalculate it in the loop */
 	bufferlen = strlen(buffer);
+	changed = 0;
 
 	for (i = 0; i < bufferlen; i++) {
-	    // same as adder, but v1*v2
-	}
+		if(buffer[i] == ';') break;
+		
+		if(isdigit(buffer[i])) {
+			startOffset = i;
+			value1 = atoi(buffer+i);
+			while(isdigit(buffer[i]))
+				i++;
+			
+			if(buffer[i] != '*' || !isdigit(buffer[i+1]))
+				continue;
+			
+			value2 = atoi(buffer + i + 1);
+			result = value1 * value2;
+			
+			do {
+				i++;
+			} while(isdigit(buffer[i]));
+			
+			remainderOffset = i;
+			
+			sprintf(nString, "%d", result);
+			
+			strcpy(buffer+startOffset, nString);
+			strcpy(buffer+startOffset+strlen(nString), buffer+remainderOffset);
+			
+			bufferlen = strlen(buffer);
+			i = startOffset+strlen(nString)-1;
+			changed = 1;
+			num_ops++;
+		}
+	    // do we have value1 already?  If not, is this a "naked" number?
+	    // if we do, is the next character after it a '+'?
+	    // if so, is the next one a "naked" number?
 
+	    // once we have value1, value2 and start and end offsets of the
+	    // expression in buffer, replace it with v1+v2
+	}
+	pthread_mutex_unlock(&buffer_lock);
+	
+	sem_wait(&progress_lock);
+	progress.mult = changed? 2 : 1;
+	sem_post(&progress_lock);
+	
+	sched_yield();
 	// something missing?
     }
 }
@@ -159,6 +219,7 @@ void *degrouper(void *arg)
     int bufferlen;
 	int startOffset;
     int i;
+	int changed;
 
     while (1) {
 		pthread_mutex_lock(&buffer_lock);
@@ -169,6 +230,7 @@ void *degrouper(void *arg)
 		}
 	
 	bufferlen = strlen(buffer);
+	changed = 0;
 
 	/* storing this prevents having to recalculate it in the loop */
 	bufferlen = strlen(buffer);
@@ -193,6 +255,7 @@ void *degrouper(void *arg)
 				bufferlen -= 2;
 				i = startOffset;
 				
+				changed = 1;
 				num_ops++;
 			}
 			// check for '(' followed by a naked number followed by ')'
@@ -201,9 +264,10 @@ void *degrouper(void *arg)
 		}
 	
 	pthread_mutex_unlock(&buffer_lock);
+	
+	sem_wait(&progress_lock);
+	progress.group = changed? 2 : 1;
 	sched_yield();
-
-	// something missing?
     }
 }
 
@@ -253,10 +317,25 @@ void *sentinel(void *arg)
 				numberBuffer[i] = buffer[i];
 			}
 		}
+		
+		if(buffer[0] != '\0') {
+			sem_wait(&progress_lock);
+			if(progress.add && progress.mult && progress.group) {
+				if(progress.add > 1 || progress.mult > 1 || progress.group > 1) {
+					progress.add = 0;
+					progress.mult = 0;
+					progress.group = 0;
+				}
+				else {
+					fprintf(stdout, "No progress can be made\n");
+					exit(EXIT_FAILURE);
+				}
+			}
+			sem_post(&progress_lock);
+		}
 		pthread_mutex_unlock(&buffer_lock);
 		
 		sched_yield();
-	// something missing?
     }
 }
 
@@ -297,6 +376,12 @@ void *reader(void *arg)
 		pthread_mutex_lock(&buffer_lock);
 		strcat(buffer, tBuffer);
 		strcat(buffer, ";");
+		
+		sem_wait(&progress_lock);
+		progress.add = 0;
+		progress.mult = 0;
+		progress.group = 0;
+		sem_post(&progress_lock);
 		
 		pthread_mutex_unlock(&buffer_lock);
 
